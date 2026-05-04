@@ -1,6 +1,4 @@
 <?php
 header("Content-Type: application/json");
 
-echo json_encode([
-    "message" => "University API is working"
-]);
+require_once __DIR__ . "/../router/api.php";
