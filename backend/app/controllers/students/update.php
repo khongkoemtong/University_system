@@ -1,57 +1,23 @@
 <?php
-header("Content-Type: application/json");
-
 require_once __DIR__ . "/../../../config/database.php";
+require_once __DIR__ . "/../../helpers/request.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/StudentService.php";
 
-$data = json_decode(file_get_contents("php://input"), true);
-
+$data = getJsonInput();
 $id = $data["id"] ?? null;
-$name = $data["name"] ?? "";
-$gender = $data["gender"] ?? "";
-$email = $data["email"] ?? "";
-$phone = $data["phone"] ?? "";
-
-if (!$id) {
-    echo json_encode([
-        "success" => false,
-        "message" => "ID is required"
-    ]);
-    exit;
-}
 
 try {
-    $stmt = $conn->prepare("
-        UPDATE students 
-        SET name = :name,
-            gender = :gender,
-            email = :email,
-            phone = :phone
-        WHERE id = :id
-    ");
+    $studentService = new StudentService($conn);
+    $student = $studentService->updateStudent($id, $data);
 
-    $stmt->execute([
-        ":id" => $id,
-        ":name" => $name,
-        ":gender" => $gender,
-        ":email" => $email,
-        ":phone" => $phone
-    ]);
-
-    if ($stmt->rowCount() > 0) {
-        echo json_encode([
-            "success" => true,
-            "message" => "Student updated successfully"
-        ]);
-    } else {
-        echo json_encode([
-            "success" => false,
-            "message" => "Student not found or no data changed"
-        ]);
+    if (!$student) {
+        errorResponse("Student not found", 404);
     }
-
-} catch (PDOException $e) {
-    echo json_encode([
-        "success" => false,
-        "message" => $e->getMessage()
-    ]);
+    
+    successResponse($student, "Student updated successfully");
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }

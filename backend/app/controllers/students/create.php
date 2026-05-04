@@ -1,28 +1,15 @@
 <?php
 require_once __DIR__ . "/../../../config/database.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../helpers/request.php";
+require_once __DIR__ . "/../../services/StudentService.php";
 
-header("Content-Type: application/json");
-
-$data = json_decode(file_get_contents("php://input"), true);
-
-$name = $data["name"] ?? "";
-$gender = $data["gender"] ?? "";
-$email = $data["email"] ?? "";
-$phone = $data["phone"] ?? "";
-
-$sql = "INSERT INTO students (name, gender, email, phone)
-        VALUES (:name, :gender, :email, :phone)";
-
-$stmt = $conn->prepare($sql);
-
-$stmt->execute([
-    ":name" => $name,
-    ":gender" => $gender,
-    ":email" => $email,
-    ":phone" => $phone
-]);
-
-echo json_encode([
-    "success" => true,
-    "message" => "Student created successfully"
-]);
+try {
+    $studentService = new StudentService($conn);
+    $student = $studentService->createStudent(getJsonInput());
+    successResponse($student, "Student created successfully", 201);
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
+}

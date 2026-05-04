@@ -76,8 +76,8 @@ try {
             ON DELETE CASCADE ON UPDATE CASCADE
     );
 
-    CR id INT AUTO_INEATE TABLE IF NOT EXISTS grades (
-       CREMENT PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS grades (
+        id INT AUTO_INCREMENT PRIMARY KEY,
         student_id INT NOT NULL,
         course_id INT NOT NULL,
         grade VARCHAR(10),

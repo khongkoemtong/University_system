@@ -1,39 +1,24 @@
 <?php
-header("Content-Type: application/json");
-
 require_once __DIR__ . "/../../../config/database.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../helpers/validation.php";
+require_once __DIR__ . "/../../services/StudentService.php";
 
 $id = $_GET["id"] ?? null;
 
-if (!$id) {
-    echo json_encode([
-        "success" => false,
-        "message" => "ID is required"
-    ]);
-    exit;
+if (!validateInteger($id)) {
+    errorResponse("Valid ID is required", 422);
 }
 
 try {
-    $stmt = $conn->prepare("SELECT * FROM students WHERE id = :id");
-    $stmt->execute([":id" => $id]);
+    $studentService = new StudentService($conn);
+    $student = $studentService->getStudentById($id);
 
-    $student = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($student) {
-        echo json_encode([
-            "success" => true,
-            "data" => $student
-        ]);
-    } else {
-        echo json_encode([
-            "success" => false,
-            "message" => "Student not found"
-        ]);
+    if (!$student) {
+        errorResponse("Student not found", 404);
     }
-
-} catch (PDOException $e) {
-    echo json_encode([
-        "success" => false,
-        "message" => $e->getMessage()
-    ]);
+    
+    successResponse($student, "Student fetched successfully");
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }

@@ -1,40 +1,23 @@
 <?php
-header("Content-Type: application/json");
-
 require_once __DIR__ . "/../../../config/database.php";
+require_once __DIR__ . "/../../helpers/request.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/StudentService.php";
 
-$data = json_decode(file_get_contents("php://input"), true);
-
-// validate id
-if (!isset($data["id"]) || empty($data["id"])) {
-    echo json_encode([
-        "success" => false,
-        "message" => "ID is required"
-    ]);
-    exit;
-}
-
-$id = $data["id"];
+$data = getJsonInput();
+$id = $data["id"] ?? null;
 
 try {
-    $stmt = $conn->prepare("DELETE FROM students WHERE id = :id");
-    $stmt->execute([":id" => $id]);
+    $studentService = new StudentService($conn);
+    $deleted = $studentService->deleteStudent($id);
 
-    if ($stmt->rowCount() > 0) {
-        echo json_encode([
-            "success" => true,
-            "message" => "Student deleted successfully"
-        ]);
-    } else {
-        echo json_encode([
-            "success" => false,
-            "message" => "Student not found"
-        ]);
+    if (!$deleted) {
+        errorResponse("Student not found", 404);
     }
-
-} catch (PDOException $e) {
-    echo json_encode([
-        "success" => false,
-        "message" => $e->getMessage()
-    ]);
+    
+    successResponse([], "Student deleted successfully");
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }
