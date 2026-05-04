@@ -1,29 +1,21 @@
 <?php
-require_once "../../../config/database.php";
-header("Content-Type: application/json");
+require_once __DIR__ . "/../../../config/database.php";
+require_once __DIR__ . "/../../helpers/request.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/UserService.php";
 
-$id = $_POST["id"] ?? "";
-$name = $_POST["name"] ?? "";
-$email = $_POST["email"] ?? "";
-$role_id = $_POST["role_id"] ?? "";
+try {
+    $data = getJsonInput();
+    $service = new UserService($conn);
+    $user = $service->updateUser($data["id"] ?? null, $data);
 
-if ($id == "" || $name == "" || $email == "" || $role_id == "") {
-    echo json_encode(["message" => "All fields required"]);
-    exit;
+    if (!$user) {
+        errorResponse("User not found", 404);
+    }
+
+    successResponse($user, "User updated successfully");
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }
-
-$sql = "UPDATE users 
-        SET name = :name, email = :email, role_id = :role_id 
-        WHERE id = :id";
-
-$stmt = $conn->prepare($sql);
-
-$stmt->execute([
-    ":id" => $id,
-    ":name" => $name,
-    ":email" => $email,
-    ":role_id" => $role_id
-]);
-
-echo json_encode(["message" => "User updated"]);
-?>

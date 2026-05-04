@@ -1,27 +1,19 @@
 <?php
-require_once "../../../config/database.php";
-header("Content-Type: application/json");
+require_once __DIR__ . "/../../../config/database.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/UserService.php";
 
-$id = $_GET["id"] ?? "";
+try {
+    $service = new UserService($conn);
+    $user = $service->getUserById($_GET["id"] ?? null);
 
-if ($id == "") {
-    echo json_encode(["message" => "ID required"]);
-    exit;
+    if (!$user) {
+        errorResponse("User not found", 404);
+    }
+
+    successResponse($user, "User fetched successfully");
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }
-
-$sql = "SELECT users.*, roles.name as role_name 
-        FROM users 
-        JOIN roles ON users.role_id = roles.id
-        WHERE users.id = :id";
-
-$stmt = $conn->prepare($sql);
-$stmt->execute([":id" => $id]);
-
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-if ($user) {
-    echo json_encode($user);
-} else {
-    echo json_encode(["message" => "User not found"]);
-}
-?>

@@ -1,21 +1,21 @@
 <?php
 require_once __DIR__ . "/../../../config/database.php";
-header("Content-Type: application/json");
-
-$data = json_decode(file_get_contents("php://input"), true);
-
-$id = $data["id"] ?? "";
-
-if (empty($id)) {
-    echo json_encode(["success" => false, "message" => "Role id is required"]);
-    exit;
-}
+require_once __DIR__ . "/../../helpers/request.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/RoleService.php";
 
 try {
-    $stmt = $conn->prepare("DELETE FROM roles WHERE id = ?");
-    $stmt->execute([$id]);
+    $data = getJsonInput();
+    $service = new RoleService($conn);
+    $deleted = $service->deleteRole($data["id"] ?? null);
 
-    echo json_encode(["success" => true, "message" => "Role deleted successfully"]);
-} catch (PDOException $e) {
-    echo json_encode(["success" => false, "message" => $e->getMessage()]);
+    if (!$deleted) {
+        errorResponse("Role not found", 404);
+    }
+
+    successResponse([], "Role deleted successfully");
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }

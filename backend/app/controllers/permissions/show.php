@@ -1,25 +1,19 @@
 <?php
 require_once __DIR__ . "/../../../config/database.php";
-header("Content-Type: application/json");
-
-$id = $_GET["id"] ?? "";
-
-if (empty($id)) {
-    echo json_encode(["success" => false, "message" => "Permission id is required"]);
-    exit;
-}
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/PermissionService.php";
 
 try {
-    $stmt = $conn->prepare("SELECT * FROM permissions WHERE id = ?");
-    $stmt->execute([$id]);
+    $service = new PermissionService($conn);
+    $permission = $service->getPermissionById($_GET["id"] ?? null);
 
-    $permission = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$permission) {
+        errorResponse("Permission not found", 404);
+    }
 
-    echo json_encode([
-        "success" => $permission ? true : false,
-        "data" => $permission,
-        "message" => $permission ? "Permission found" : "Permission not found"
-    ]);
-} catch (PDOException $e) {
-    echo json_encode(["success" => false, "message" => $e->getMessage()]);
+    successResponse($permission, "Permission fetched successfully");
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }

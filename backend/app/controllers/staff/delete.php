@@ -1,15 +1,21 @@
 <?php
-require_once "../../../config/database.php";
-header("Content-Type: application/json");
+require_once __DIR__ . "/../../../config/database.php";
+require_once __DIR__ . "/../../helpers/request.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/StaffService.php";
 
-$data = json_decode(file_get_contents("php://input"), true);
+try {
+    $data = getJsonInput();
+    $service = new StaffService($conn);
+    $deleted = $service->deleteStaff($data["id"] ?? null);
 
-$id = $data["id"] ?? 0;
+    if (!$deleted) {
+        errorResponse("Staff not found", 404);
+    }
 
-$stmt = $conn->prepare("DELETE FROM staff WHERE id = :id");
-$stmt->execute([":id" => $id]);
-
-echo json_encode([
-    "success" => true,
-    "message" => "Staff deleted successfully"
-]);
+    successResponse([], "Staff deleted successfully");
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
+}

@@ -1,10 +1,19 @@
 <?php
-require_once "../../../config/database.php";
-header("Content-Type: application/json");
+require_once __DIR__ . "/../../../config/database.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/StaffService.php";
 
-$id = $_GET["id"] ?? 0;
+try {
+    $service = new StaffService($conn);
+    $staff = $service->getStaffById($_GET["id"] ?? null);
 
-$stmt = $conn->prepare("SELECT * FROM staff WHERE id = :id");
-$stmt->execute([":id" => $id]);
+    if (!$staff) {
+        errorResponse("Staff not found", 404);
+    }
 
-echo json_encode($stmt->fetch(PDO::FETCH_ASSOC));
+    successResponse($staff, "Staff fetched successfully");
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
+}

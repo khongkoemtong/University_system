@@ -1,21 +1,21 @@
 <?php
 require_once __DIR__ . "/../../../config/database.php";
-header("Content-Type: application/json");
-
-$data = json_decode(file_get_contents("php://input"), true);
-
-$id = $data["id"] ?? "";
-
-if (empty($id)) {
-    echo json_encode(["success" => false, "message" => "Course id is required"]);
-    exit;
-}
+require_once __DIR__ . "/../../helpers/request.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/CourseService.php";
 
 try {
-    $stmt = $conn->prepare("DELETE FROM courses WHERE id = ?");
-    $stmt->execute([$id]);
+    $data = getJsonInput();
+    $service = new CourseService($conn);
+    $deleted = $service->deleteCourse($data["id"] ?? null);
 
-    echo json_encode(["success" => true, "message" => "Course deleted successfully"]);
-} catch (PDOException $e) {
-    echo json_encode(["success" => false, "message" => $e->getMessage()]);
+    if (!$deleted) {
+        errorResponse("Course not found", 404);
+    }
+
+    successResponse([], "Course deleted successfully");
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }

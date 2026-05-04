@@ -6,10 +6,12 @@ require_once __DIR__ . "/../helpers/validation.php";
 class StudentService
 {
     private Student $studentModel;
+    private bool $usesAccountSchema;
 
     public function __construct(PDO $conn)
     {
         $this->studentModel = new Student($conn);
+        $this->usesAccountSchema = $this->studentModel->usesAccountSchema();
     }
 
     public function getAllStudents()
@@ -30,17 +32,21 @@ class StudentService
             throw new InvalidArgumentException("Email already exists");
         }
 
-        if ($this->studentModel->studentCodeExists($payload["student_code"])) {
+        if ($this->usesAccountSchema && $this->studentModel->studentCodeExists($payload["student_code"])) {
             throw new InvalidArgumentException("Student code already exists");
         }
 
-        $studentRoleId = $this->studentModel->getStudentRoleId();
+        $studentRoleId = null;
 
-        if ($studentRoleId === null) {
-            throw new RuntimeException("Student role not found. Run seed first.");
+        if ($this->usesAccountSchema) {
+            $studentRoleId = $this->studentModel->getStudentRoleId();
+
+            if ($studentRoleId === null) {
+                throw new RuntimeException("Student role not found. Run seed first.");
+            }
+
+            $payload["password"] = hashPassword($payload["password"]);
         }
-
-        $payload["password"] = hashPassword($payload["password"]);
 
         return $this->studentModel->create($payload, $studentRoleId);
     }
@@ -59,7 +65,7 @@ class StudentService
 
         $payload = $this->validateStudentData($data, true);
 
-        if ($this->studentModel->studentCodeExists($payload["student_code"], (int) $id)) {
+        if ($this->usesAccountSchema && $this->studentModel->studentCodeExists($payload["student_code"], (int) $id)) {
             throw new InvalidArgumentException("Student code already exists");
         }
 
@@ -89,6 +95,7 @@ class StudentService
         $gender = trim((string) ($data["gender"] ?? ""));
         $dob = trim((string) ($data["dob"] ?? ""));
         $address = trim((string) ($data["address"] ?? ""));
+        $phone = trim((string) ($data["phone"] ?? ""));
 
         if (!required($name)) {
             throw new InvalidArgumentException("Name is required");
@@ -98,16 +105,20 @@ class StudentService
             throw new InvalidArgumentException("Valid email is required");
         }
 
-        if (!required($studentCode)) {
-            throw new InvalidArgumentException("Student code is required");
-        }
+        if ($this->usesAccountSchema) {
+            if (!required($studentCode)) {
+                throw new InvalidArgumentException("Student code is required");
+            }
 
-        if (!$isUpdate && strlen($password) < 6) {
-            throw new InvalidArgumentException("Password must be at least 6 characters");
-        }
+            if (!$isUpdate && strlen($password) < 6) {
+                throw new InvalidArgumentException("Password must be at least 6 characters");
+            }
 
-        if ($dob !== "" && !validateDateValue($dob)) {
-            throw new InvalidArgumentException("DOB must be in Y-m-d format");
+            if ($dob !== "" && !validateDateValue($dob)) {
+                throw new InvalidArgumentException("DOB must be in Y-m-d format");
+            }
+        } elseif ($phone !== "" && !validatePhone($phone)) {
+            throw new InvalidArgumentException("Phone must be 8 to 15 digits");
         }
 
         return [
@@ -117,7 +128,8 @@ class StudentService
             "password" => $password,
             "gender" => $gender !== "" ? $gender : null,
             "dob" => $dob !== "" ? $dob : null,
-            "address" => $address !== "" ? $address : null
+            "address" => $address !== "" ? $address : null,
+            "phone" => $phone !== "" ? $phone : null
         ];
     }
 }

@@ -1,22 +1,15 @@
 <?php
 require_once __DIR__ . "/../../../config/database.php";
-header("Content-Type: application/json");
-
-$data = json_decode(file_get_contents("php://input"), true);
-
-$name = $data["name"] ?? "";
-$staff_id = $data["staff_id"] ?? null;
-
-if (empty($name)) {
-    echo json_encode(["success" => false, "message" => "Course name is required"]);
-    exit;
-}
+require_once __DIR__ . "/../../helpers/request.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/CourseService.php";
 
 try {
-    $stmt = $conn->prepare("INSERT INTO courses (name, staff_id) VALUES (?, ?)");
-    $stmt->execute([$name, $staff_id]);
-
-    echo json_encode(["success" => true, "message" => "Course created successfully"]);
-} catch (PDOException $e) {
-    echo json_encode(["success" => false, "message" => $e->getMessage()]);
+    $service = new CourseService($conn);
+    $course = $service->createCourse(getJsonInput());
+    successResponse($course, "Course created successfully", 201);
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }

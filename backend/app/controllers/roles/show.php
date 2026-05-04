@@ -1,25 +1,19 @@
 <?php
 require_once __DIR__ . "/../../../config/database.php";
-header("Content-Type: application/json");
-
-$id = $_GET["id"] ?? "";
-
-if (empty($id)) {
-    echo json_encode(["success" => false, "message" => "Role id is required"]);
-    exit;
-}
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/RoleService.php";
 
 try {
-    $stmt = $conn->prepare("SELECT * FROM roles WHERE id = ?");
-    $stmt->execute([$id]);
+    $service = new RoleService($conn);
+    $role = $service->getRoleById($_GET["id"] ?? null);
 
-    $role = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$role) {
+        errorResponse("Role not found", 404);
+    }
 
-    echo json_encode([
-        "success" => $role ? true : false,
-        "data" => $role,
-        "message" => $role ? "Role found" : "Role not found"
-    ]);
-} catch (PDOException $e) {
-    echo json_encode(["success" => false, "message" => $e->getMessage()]);
+    successResponse($role, "Role fetched successfully");
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }

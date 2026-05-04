@@ -1,35 +1,15 @@
 <?php
-require_once "../../../config/database.php";
-header("Content-Type: application/json");
+require_once __DIR__ . "/../../../config/database.php";
+require_once __DIR__ . "/../../helpers/request.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/UserService.php";
 
-$data = json_decode(file_get_contents("php://input"), true);
-
-$name = $data["name"] ?? "";
-$email = $data["email"] ?? "";
-$password = $data["password"] ?? "";
-$role_id = $data["role_id"] ?? "";
-
-if ($name == "" || $email == "" || $password == "" || $role_id == "") {
-    echo json_encode(["success" => false, "message" => "All fields are required"]);
-    exit;
+try {
+    $service = new UserService($conn);
+    $user = $service->createUser(getJsonInput());
+    successResponse($user, "User created successfully", 201);
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }
-
-$hashPassword = password_hash($password, PASSWORD_DEFAULT);
-
-$sql = "INSERT INTO users (name, email, password, role_id)
-        VALUES (:name, :email, :password, :role_id)";
-
-$stmt = $conn->prepare($sql);
-
-$stmt->execute([
-    ":name" => $name,
-    ":email" => $email,
-    ":password" => $hashPassword,
-    ":role_id" => $role_id
-]);
-
-echo json_encode([
-    "success" => true,
-    "message" => "User created successfully"
-]);
-?>

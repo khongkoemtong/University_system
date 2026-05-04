@@ -1,25 +1,11 @@
 <?php
 require_once __DIR__ . "/../../../config/database.php";
-header("Content-Type: application/json");
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/CourseService.php";
 
 try {
-    $stmt = $conn->prepare("
-        SELECT 
-            courses.id,
-            courses.name,
-            courses.staff_id,
-            staff.staff_code,
-            staff.position
-        FROM courses
-        LEFT JOIN staff ON courses.staff_id = staff.id
-        ORDER BY courses.id DESC
-    ");
-    $stmt->execute();
-
-    echo json_encode([
-        "success" => true,
-        "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)
-    ]);
-} catch (PDOException $e) {
-    echo json_encode(["success" => false, "message" => $e->getMessage()]);
+    $service = new CourseService($conn);
+    successResponse($service->getAllCourses(), "Courses fetched successfully");
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }

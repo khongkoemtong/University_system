@@ -1,25 +1,15 @@
 <?php
-require_once "../../../config/database.php";
-header("Content-Type: application/json");
+require_once __DIR__ . "/../../../config/database.php";
+require_once __DIR__ . "/../../helpers/request.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/StaffService.php";
 
-$data = json_decode(file_get_contents("php://input"), true);
-
-$user_id = $data["user_id"] ?? null;
-$staff_code = $data["staff_code"] ?? "";
-$position = $data["position"] ?? "";
-
-$stmt = $conn->prepare("
-    INSERT INTO staff (user_id, staff_code, position)
-    VALUES (:user_id, :staff_code, :position)
-");
-
-$stmt->execute([
-    ":user_id" => $user_id,
-    ":staff_code" => $staff_code,
-    ":position" => $position
-]);
-
-echo json_encode([
-    "success" => true,
-    "message" => "Staff created successfully"
-]);
+try {
+    $service = new StaffService($conn);
+    $staff = $service->createStaff(getJsonInput());
+    successResponse($staff, "Staff created successfully", 201);
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
+}

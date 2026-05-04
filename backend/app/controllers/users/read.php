@@ -1,15 +1,11 @@
 <?php
-require_once "../../../config/database.php";
-header("Content-Type: application/json");
+require_once __DIR__ . "/../../../config/database.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/UserService.php";
 
-$sql = "SELECT users.*, roles.name as role_name 
-        FROM users 
-        JOIN roles ON users.role_id = roles.id";
-
-$stmt = $conn->prepare($sql);
-$stmt->execute();
-
-$data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-echo json_encode($data);
-?>
+try {
+    $service = new UserService($conn);
+    successResponse($service->getAllUsers(), "Users fetched successfully");
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
+}

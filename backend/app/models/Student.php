@@ -3,79 +3,222 @@
 class Student
 {
     private PDO $conn;
+    private ?bool $usesAccountSchema = null;
 
     public function __construct(PDO $conn)
     {
         $this->conn = $conn;
     }
 
+    public function usesAccountSchema(): bool
+    {
+        if ($this->usesAccountSchema !== null) {
+            return $this->usesAccountSchema;
+        }
+
+        $this->usesAccountSchema = $this->tableHasColumn("students", "user_id");
+        return $this->usesAccountSchema;
+    }
+
     public function getAll()
     {
-        $stmt = $this->conn->prepare("
-            SELECT 
-                students.id,
-                students.user_id,
-                students.student_code,
-                students.gender,
-                students.dob,
-                students.address,
-                users.name,
-                users.email,
-                users.role_id
-            FROM students
-            INNER JOIN users ON users.id = students.user_id
-            ORDER BY students.id DESC
-        ");
-        $stmt->execute();
+        if ($this->usesAccountSchema()) {
+            $stmt = $this->conn->prepare("
+                SELECT 
+                    students.id,
+                    students.user_id,
+                    students.student_code,
+                    students.gender,
+                    students.dob,
+                    students.address,
+                    users.name,
+                    users.email,
+                    users.role_id
+                FROM students
+                INNER JOIN users ON users.id = students.user_id
+                ORDER BY students.id DESC
+            ");
+        } else {
+            $stmt = $this->conn->prepare("
+                SELECT id, name, gender, email, phone
+                FROM students
+                ORDER BY id DESC
+            ");
+        }
 
+        $stmt->execute();
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     public function find($id)
     {
-        $stmt = $this->conn->prepare("
-            SELECT 
-                students.id,
-                students.user_id,
-                students.student_code,
-                students.gender,
-                students.dob,
-                students.address,
-                users.name,
-                users.email,
-                users.role_id
-            FROM students
-            INNER JOIN users ON users.id = students.user_id
-            WHERE students.id = :id
-        ");
-        $stmt->execute([":id" => $id]);
+        if ($this->usesAccountSchema()) {
+            $stmt = $this->conn->prepare("
+                SELECT 
+                    students.id,
+                    students.user_id,
+                    students.student_code,
+                    students.gender,
+                    students.dob,
+                    students.address,
+                    users.name,
+                    users.email,
+                    users.role_id
+                FROM students
+                INNER JOIN users ON users.id = students.user_id
+                WHERE students.id = :id
+            ");
+        } else {
+            $stmt = $this->conn->prepare("
+                SELECT id, name, gender, email, phone
+                FROM students
+                WHERE id = :id
+            ");
+        }
 
+        $stmt->execute([":id" => $id]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
     public function findByEmail($email)
     {
-        $stmt = $this->conn->prepare("
-            SELECT 
-                students.id,
-                students.user_id,
-                students.student_code,
-                students.gender,
-                students.dob,
-                students.address,
-                users.name,
-                users.email,
-                users.role_id
-            FROM students
-            INNER JOIN users ON users.id = students.user_id
-            WHERE users.email = :email
-        ");
-        $stmt->execute([":email" => $email]);
+        if ($this->usesAccountSchema()) {
+            $stmt = $this->conn->prepare("
+                SELECT 
+                    students.id,
+                    students.user_id,
+                    students.student_code,
+                    students.gender,
+                    students.dob,
+                    students.address,
+                    users.name,
+                    users.email,
+                    users.role_id
+                FROM students
+                INNER JOIN users ON users.id = students.user_id
+                WHERE users.email = :email
+            ");
+        } else {
+            $stmt = $this->conn->prepare("
+                SELECT id, name, gender, email, phone
+                FROM students
+                WHERE email = :email
+            ");
+        }
 
+        $stmt->execute([":email" => $email]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
-    public function create($data, $studentRoleId)
+    public function create($data, $studentRoleId = null)
+    {
+        if ($this->usesAccountSchema()) {
+            return $this->createWithAccountSchema($data, $studentRoleId);
+        }
+
+        $stmt = $this->conn->prepare("
+            INSERT INTO students (name, gender, email, phone)
+            VALUES (:name, :gender, :email, :phone)
+        ");
+
+        $stmt->execute([
+            ":name" => $data["name"],
+            ":gender" => $data["gender"] ?? null,
+            ":email" => $data["email"],
+            ":phone" => $data["phone"] ?? null
+        ]);
+
+        return $this->find((int) $this->conn->lastInsertId());
+    }
+
+    public function update($id, $data)
+    {
+        if ($this->usesAccountSchema()) {
+            return $this->updateWithAccountSchema($id, $data);
+        }
+
+        $student = $this->find($id);
+
+        if (!$student) {
+            return null;
+        }
+
+        $stmt = $this->conn->prepare("
+            UPDATE students
+            SET name = :name,
+                gender = :gender,
+                email = :email,
+                phone = :phone
+            WHERE id = :id
+        ");
+
+        $stmt->execute([
+            ":id" => $id,
+            ":name" => $data["name"],
+            ":gender" => $data["gender"] ?? null,
+            ":email" => $data["email"],
+            ":phone" => $data["phone"] ?? null
+        ]);
+
+        return $this->find($id);
+    }
+
+    public function delete($id)
+    {
+        if ($this->usesAccountSchema()) {
+            $student = $this->find($id);
+
+            if (!$student) {
+                return false;
+            }
+
+            $stmt = $this->conn->prepare("DELETE FROM users WHERE id = :user_id");
+            $stmt->execute([":user_id" => $student["user_id"]]);
+
+            return $stmt->rowCount() > 0;
+        }
+
+        $stmt = $this->conn->prepare("DELETE FROM students WHERE id = :id");
+        $stmt->execute([":id" => $id]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    public function studentCodeExists($studentCode, $ignoreId = null)
+    {
+        if (!$this->usesAccountSchema()) {
+            return false;
+        }
+
+        $sql = "SELECT id FROM students WHERE student_code = :student_code";
+        $params = [":student_code" => $studentCode];
+
+        if ($ignoreId !== null) {
+            $sql .= " AND id != :id";
+            $params[":id"] = $ignoreId;
+        }
+
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute($params);
+
+        return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function getStudentRoleId()
+    {
+        if (!$this->usesAccountSchema()) {
+            return null;
+        }
+
+        $stmt = $this->conn->prepare("SELECT id FROM roles WHERE name = :name LIMIT 1");
+        $stmt->execute([":name" => "student"]);
+
+        $role = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return $role ? (int) $role["id"] : null;
+    }
+
+    private function createWithAccountSchema($data, $studentRoleId)
     {
         $this->conn->beginTransaction();
 
@@ -117,7 +260,7 @@ class Student
         }
     }
 
-    public function update($id, $data)
+    private function updateWithAccountSchema($id, $data)
     {
         $student = $this->find($id);
 
@@ -158,7 +301,6 @@ class Student
             ]);
 
             $this->conn->commit();
-
             return $this->find($id);
         } catch (Throwable $e) {
             $this->conn->rollBack();
@@ -166,43 +308,14 @@ class Student
         }
     }
 
-    public function delete($id)
+    private function tableHasColumn($table, $column): bool
     {
-        $student = $this->find($id);
-
-        if (!$student) {
+        try {
+            $stmt = $this->conn->prepare("SHOW COLUMNS FROM `{$table}` LIKE :column");
+            $stmt->execute([":column" => $column]);
+            return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (Throwable $e) {
             return false;
         }
-
-        $stmt = $this->conn->prepare("DELETE FROM users WHERE id = :user_id");
-        $stmt->execute([":user_id" => $student["user_id"]]);
-
-        return $stmt->rowCount() > 0;
-    }
-
-    public function studentCodeExists($studentCode, $ignoreId = null)
-    {
-        $sql = "SELECT id FROM students WHERE student_code = :student_code";
-        $params = [":student_code" => $studentCode];
-
-        if ($ignoreId !== null) {
-            $sql .= " AND id != :id";
-            $params[":id"] = $ignoreId;
-        }
-
-        $stmt = $this->conn->prepare($sql);
-        $stmt->execute($params);
-
-        return (bool) $stmt->fetch(PDO::FETCH_ASSOC);
-    }
-
-    public function getStudentRoleId()
-    {
-        $stmt = $this->conn->prepare("SELECT id FROM roles WHERE name = :name LIMIT 1");
-        $stmt->execute([":name" => "student"]);
-
-        $role = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        return $role ? (int) $role["id"] : null;
     }
 }

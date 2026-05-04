@@ -1,22 +1,21 @@
 <?php
 require_once __DIR__ . "/../../../config/database.php";
-header("Content-Type: application/json");
-
-$data = json_decode(file_get_contents("php://input"), true);
-
-$id = $data["id"] ?? "";
-$name = $data["name"] ?? "";
-
-if (empty($id) || empty($name)) {
-    echo json_encode(["success" => false, "message" => "Role id and name are required"]);
-    exit;
-}
+require_once __DIR__ . "/../../helpers/request.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/RoleService.php";
 
 try {
-    $stmt = $conn->prepare("UPDATE roles SET name = ? WHERE id = ?");
-    $stmt->execute([$name, $id]);
+    $data = getJsonInput();
+    $service = new RoleService($conn);
+    $role = $service->updateRole($data["id"] ?? null, $data);
 
-    echo json_encode(["success" => true, "message" => "Role updated successfully"]);
-} catch (PDOException $e) {
-    echo json_encode(["success" => false, "message" => $e->getMessage()]);
+    if (!$role) {
+        errorResponse("Role not found", 404);
+    }
+
+    successResponse($role, "Role updated successfully");
+} catch (InvalidArgumentException $e) {
+    errorResponse($e->getMessage(), 422);
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }

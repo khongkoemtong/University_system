@@ -5,63 +5,93 @@ CorsMiddleware::handle();
 
 $uri = parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH);
 $uri = str_replace("/index.php", "", $uri);
-
 $method = $_SERVER["REQUEST_METHOD"];
 
-if ($uri === "/api/students") {
-    if ($method === "GET") {
-        if (isset($_GET["id"]) && $_GET["id"] !== "") {
-            require_once __DIR__ . "/../app/controllers/students/show.php";
-        } else {
-            require_once __DIR__ . "/../app/controllers/students/read.php";
+function dispatchCrudResource($uri, $method, $resource)
+{
+    $base = "/api/{$resource}";
+    $controllerPath = __DIR__ . "/../app/controllers/{$resource}";
+
+    if ($uri === $base) {
+        if ($method === "GET") {
+            require_once $controllerPath . "/" . ((isset($_GET["id"]) && $_GET["id"] !== "") ? "show.php" : "read.php");
+            exit;
         }
-        exit;
+
+        if ($method === "POST") {
+            require_once $controllerPath . "/create.php";
+            exit;
+        }
+
+        if ($method === "PUT") {
+            require_once $controllerPath . "/update.php";
+            exit;
+        }
+
+        if ($method === "DELETE") {
+            require_once $controllerPath . "/delete.php";
+            exit;
+        }
     }
 
-    if ($method === "POST") {
-        require_once __DIR__ . "/../app/controllers/students/create.php";
-        exit;
+    $aliasMap = [
+        "GET" => [
+            "read" => "read.php",
+            "show" => "show.php"
+        ],
+        "POST" => [
+            "create" => "create.php"
+        ],
+        "PUT" => [
+            "update" => "update.php"
+        ],
+        "DELETE" => [
+            "delete" => "delete.php"
+        ]
+    ];
+
+    if (!isset($aliasMap[$method])) {
+        return;
     }
 
-    if ($method === "PUT") {
-        require_once __DIR__ . "/../app/controllers/students/update.php";
-        exit;
-    }
-
-    if ($method === "DELETE") {
-        require_once __DIR__ . "/../app/controllers/students/delete.php";
-        exit;
+    foreach ($aliasMap[$method] as $action => $file) {
+        if ($uri === "{$base}/{$action}") {
+            require_once $controllerPath . "/{$file}";
+            exit;
+        }
     }
 }
 
-if ($uri === "/api/students/read" && $method === "GET") {
-    require_once __DIR__ . "/../app/controllers/students/read.php";
+dispatchCrudResource($uri, $method, "students");
+dispatchCrudResource($uri, $method, "users");
+dispatchCrudResource($uri, $method, "roles");
+dispatchCrudResource($uri, $method, "permissions");
+dispatchCrudResource($uri, $method, "staff");
+dispatchCrudResource($uri, $method, "courses");
+
+if ($uri === "/api/role_permissions" && $method === "GET") {
+    if (isset($_GET["role_id"]) && $_GET["role_id"] !== "") {
+        require_once __DIR__ . "/../app/controllers/role_permissions/show.php";
+    } else {
+        require_once __DIR__ . "/../app/controllers/role_permissions/read.php";
+    }
     exit;
 }
 
-if ($uri === "/api/students/show" && $method === "GET") {
-    require_once __DIR__ . "/../app/controllers/students/show.php";
+if ($uri === "/api/role_permissions/assign" && $method === "POST") {
+    require_once __DIR__ . "/../app/controllers/role_permissions/assign.php";
     exit;
 }
 
-if ($uri === "/api/students/create" && $method === "POST") {
-    require_once __DIR__ . "/../app/controllers/students/create.php";
+if ($uri === "/api/role_permissions/update" && $method === "PUT") {
+    require_once __DIR__ . "/../app/controllers/role_permissions/update.php";
     exit;
 }
 
-if ($uri === "/api/students/update" && $method === "PUT") {
-    require_once __DIR__ . "/../app/controllers/students/update.php";
+if ($uri === "/api/role_permissions/remove" && $method === "DELETE") {
+    require_once __DIR__ . "/../app/controllers/role_permissions/remove.php";
     exit;
 }
 
-if ($uri === "/api/students/delete" && $method === "DELETE") {
-    require_once __DIR__ . "/../app/controllers/students/delete.php";
-    exit;
-}
-
-echo json_encode([
-    "success" => false,
-    "message" => "Route not found",
-    "uri" => $uri,
-    "method" => $method
-]);
+require_once __DIR__ . "/../app/helpers/response.php";
+errorResponse("Route not found", 404);

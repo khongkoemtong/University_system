@@ -1,15 +1,11 @@
 <?php
 require_once __DIR__ . "/../../../config/database.php";
-header("Content-Type: application/json");
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/RoleService.php";
 
 try {
-    $stmt = $conn->prepare("SELECT * FROM roles ORDER BY id DESC");
-    $stmt->execute();
-
-    echo json_encode([
-        "success" => true,
-        "data" => $stmt->fetchAll(PDO::FETCH_ASSOC)
-    ]);
-} catch (PDOException $e) {
-    echo json_encode(["success" => false, "message" => $e->getMessage()]);
+    $service = new RoleService($conn);
+    successResponse($service->getAllRoles(), "Roles fetched successfully");
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
 }

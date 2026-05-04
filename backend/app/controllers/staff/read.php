@@ -1,20 +1,11 @@
 <?php
-require_once "../../../config/database.php";
-header("Content-Type: application/json");
+require_once __DIR__ . "/../../../config/database.php";
+require_once __DIR__ . "/../../helpers/response.php";
+require_once __DIR__ . "/../../services/StaffService.php";
 
-$sql = "
-SELECT 
-    staff.id,
-    staff.staff_code,
-    staff.position,
-    users.name,
-    users.email
-FROM staff
-LEFT JOIN users ON staff.user_id = users.id
-ORDER BY staff.id DESC
-";
-
-$stmt = $conn->prepare($sql);
-$stmt->execute();
-
-echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+try {
+    $service = new StaffService($conn);
+    successResponse($service->getAllStaff(), "Staff fetched successfully");
+} catch (Throwable $e) {
+    errorResponse($e->getMessage(), 500);
+}
