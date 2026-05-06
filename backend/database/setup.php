@@ -65,7 +65,7 @@ try {
         FOREIGN KEY (staff_id) REFERENCES staff(id)
             ON DELETE SET NULL ON UPDATE CASCADE
     );
-
+    
     CREATE TABLE IF NOT EXISTS course_students (
         course_id INT NOT NULL,
         student_id INT NOT NULL,
