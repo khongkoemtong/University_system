@@ -9,6 +9,10 @@ function checkPassword($password, $hashedPassword) {
     return password_verify($password, $hashedPassword);
 }
 
+function createAccessToken(array $payload) {
+    return base64_encode(json_encode($payload));
+}
+
 function parseAccessToken($token) {
     if (!$token) {
         return null;
@@ -23,4 +27,9 @@ function parseAccessToken($token) {
     $payload = json_decode($decoded, true);
 
     return is_array($payload) ? $payload : null;
+}
+
+function getAuthenticatedUser(): ?array
+{
+    return parseAccessToken(getBearerToken());
 }

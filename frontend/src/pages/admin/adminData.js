@@ -2,6 +2,8 @@ export const adminNavItems = [
   { label: "Dashboard", icon: "grid", to: "/admin/dashboard" },
   { label: "Report", icon: "message", to: "/admin/report", badge: 3 },
   { label: "Staff", icon: "staff", to: "/admin/staff" },
+  { label: "Classes", icon: "classroom", to: "/admin/classes" },
+  { label: "Courses", icon: "course", to: "/admin/courses" },
   { label: "Database", icon: "file", to: "/admin/database" },
   { label: "Attendance", icon: "chart", to: "/admin/attendance" },
   { label: "Settings", icon: "gear", to: "/admin/settings" },

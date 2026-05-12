@@ -1,7 +1,9 @@
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./staff-dashboard.css";
-import { baseStudents, scheduleItems, staffNavItems } from "./staffData";
+import { clearAuthSession, getAuthSession } from "../auth/authSession";
+import { fetchClasses, fetchStudents } from "../admin/adminApi";
+import { scheduleItems, staffNavItems } from "./staffData";
 
 function Icon({ type }) {
   const icons = {
@@ -33,12 +35,20 @@ function Icon({ type }) {
 }
 
 export default function StaffLayout() {
+  const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [sidebarSide, setSidebarSide] = useState("left");
   const [sidebarWidth, setSidebarWidth] = useState(188);
   const frameRef = useRef(null);
   const location = useLocation();
+  const session = getAuthSession();
+  const authUser = session?.user || null;
+  const sessionToken = session?.token || "";
+  const [students, setStudents] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState("");
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -47,6 +57,50 @@ export default function StaffLayout() {
 
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadStaffData() {
+      if (!sessionToken) {
+        if (!isCancelled) {
+          setStudents([]);
+          setClasses([]);
+          setDataLoading(false);
+        }
+        return;
+      }
+
+      try {
+        setDataLoading(true);
+        setDataError("");
+        const [classData, studentData] = await Promise.all([
+          fetchClasses(sessionToken),
+          fetchStudents(),
+        ]);
+
+        if (isCancelled) return;
+
+        setClasses(classData);
+        setStudents(studentData);
+      } catch (error) {
+        if (isCancelled) return;
+        setDataError(error instanceof Error ? error.message : "Unable to load teacher data.");
+        setClasses([]);
+        setStudents([]);
+      } finally {
+        if (!isCancelled) {
+          setDataLoading(false);
+        }
+      }
+    }
+
+    loadStaffData();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [sessionToken]);
 
   const pageTitle = useMemo(() => {
     const match = staffNavItems.find((item) => item.to === location.pathname);
@@ -62,8 +116,45 @@ export default function StaffLayout() {
   const isFullWidthPage = true;
 
   const filteredStudents = useMemo(() => {
-    return baseStudents;
-  }, []);
+    if (!classes.length) {
+      return [];
+    }
+
+    const allowedClassIds = new Set(classes.map((item) => item.id));
+    const allowedClassNames = new Set(classes.map((item) => item.name));
+
+    return students.filter(
+      (student) => allowedClassIds.has(student.classId) || allowedClassNames.has(student.className),
+    );
+  }, [classes, students]);
+
+  async function refreshData() {
+    if (!sessionToken) return;
+
+    try {
+      setDataLoading(true);
+      setDataError("");
+      const [classData, studentData] = await Promise.all([
+        fetchClasses(sessionToken),
+        fetchStudents(),
+      ]);
+      setClasses(classData);
+      setStudents(studentData);
+    } catch (error) {
+      setDataError(error instanceof Error ? error.message : "Unable to refresh teacher data.");
+    } finally {
+      setDataLoading(false);
+    }
+  }
+
+  function handleLogout() {
+    clearAuthSession();
+    navigate("/sign-in", { replace: true });
+  }
+
+  if (!authUser || String(authUser.role_name || "").toLowerCase() !== "staff") {
+    return <Navigate to="/sign-in" replace />;
+  }
 
   const handleSidebarDragStart = (event) => {
     const frame = frameRef.current;
@@ -162,25 +253,13 @@ export default function StaffLayout() {
 
           <section className="staff-side-panel">
             <div className="staff-side-panel-head">
-              <h3>Live Data</h3>
-              <p>Current attendance state</p>
+              <h3>Signed In Account</h3>
+              <p>Current staff login session</p>
             </div>
-            <div className="staff-side-metrics">
-              <article>
-                <span>Students</span>
-                <strong>{filteredStudents.length}</strong>
-              </article>
-              <article>
-                <span>Present</span>
-                <strong>{filteredStudents.filter((student) => student.status === "Present").length}</strong>
-              </article>
-              <article>
-                <span>Review</span>
-                <strong>
-                  {filteredStudents.filter((student) => student.status !== "Present").length}
-                </strong>
-              </article>
-            </div>
+           
+            <button type="button" className="staff-logout-btn" onClick={handleLogout}>
+              Logout
+            </button>
           </section>
         </aside>
 
@@ -194,10 +273,16 @@ export default function StaffLayout() {
                 <span>{headerDate}</span>
               </div>
               <div className="staff-profile">
-                <div className="staff-avatar">TC</div>
+                <div className="staff-avatar">
+                  {String(authUser.name || "ST")
+                    .split(" ")
+                    .map((part) => part[0])
+                    .join("")
+                    .slice(0, 2)}
+                </div>
                 <div>
-                  <strong>Chris</strong>
-                  <span>{pageTitle}</span>
+                  <strong>{authUser.name}</strong>
+                  <span>{pageTitle} • {authUser.email}</span>
                 </div>
               </div>
             </div>
@@ -205,13 +290,19 @@ export default function StaffLayout() {
 
           <div className={`staff-content${isFullWidthPage ? " is-full-width" : ""}`}>
             <div className="staff-center">
-              <Outlet
-                context={{
-                  currentTime,
-                  filteredStudents,
-                  pageTitle,
-                }}
-              />
+                <Outlet
+                  context={{
+                    currentTime,
+                    filteredStudents,
+                    classes,
+                    pageTitle,
+                    authUser,
+                    sessionToken,
+                    dataLoading,
+                    dataError,
+                    refreshData,
+                  }}
+                />
             </div>
 
             {!isFullWidthPage && (

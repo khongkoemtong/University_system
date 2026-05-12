@@ -1,14 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
-import {
-  announcements,
-  attendanceTrend,
-  productivity,
-  quickStatsBase,
-  staffMembers,
-  students,
-  teachers,
-} from "./adminData";
+import { fetchCourses } from "./adminApi";
+import { attendanceTrend, productivity } from "./adminData";
+import { useAdminDirectoryData } from "./useAdminDirectoryData";
 
 function buildLinePath(values) {
   if (!values.length) {
@@ -18,14 +12,58 @@ function buildLinePath(values) {
   const max = 100;
   return values
     .map((value, index) => {
-      const x = (index / (values.length - 1)) * 96 + 2;
+      const x = (index / Math.max(values.length - 1, 1)) * 96 + 2;
       const y = 100 - (value / max) * 80 - 10;
       return `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(" ");
 }
 
-function DashboardTable({ searchTerm }) {
+function buildAttendanceSeries(students) {
+  if (!students.length) {
+    return attendanceTrend;
+  }
+
+  const values = students
+    .map((student) => Number(student.attendance))
+    .filter((value) => Number.isFinite(value))
+    .slice(0, 12);
+
+  if (!values.length) {
+    return attendanceTrend;
+  }
+
+  while (values.length < 12) {
+    const lastValue = values[values.length - 1] ?? 80;
+    values.push(Math.max(0, Math.min(100, lastValue - 2 + (values.length % 5))));
+  }
+
+  return values;
+}
+
+function buildRecentActivity({ students, staffMembers, courses }) {
+  const studentItems = students.slice(0, 3).map((student) => ({
+    id: `student-${student.id}`,
+    title: `${student.name} record synced`,
+    detail: `${student.displayId} • ${student.className} • ${student.attendance}% attendance`,
+  }));
+
+  const staffItems = staffMembers.slice(0, 3).map((member) => ({
+    id: `staff-${member.id}`,
+    title: `${member.name} status updated`,
+    detail: `${member.role} • ${member.office} • ${member.status}`,
+  }));
+
+  const courseItems = courses.slice(0, 3).map((course) => ({
+    id: `course-${course.id}`,
+    title: `${course.name} synced`,
+    detail: `${course.staffCode} • ${course.position} • ${course.status}`,
+  }));
+
+  return [...staffItems, ...studentItems, ...courseItems].slice(0, 6);
+}
+
+function DashboardTable({ searchTerm, students, staffMembers, courses }) {
   const [tab, setTab] = useState("students");
 
   const tabs = {
@@ -46,7 +84,7 @@ function DashboardTable({ searchTerm }) {
               <p>{row.name}</p>
             </div>
           </td>
-          <td>{row.id}</td>
+          <td>{row.displayId}</td>
           <td>{row.className}</td>
           <td>{row.age}</td>
           <td>{row.gender}</td>
@@ -54,35 +92,36 @@ function DashboardTable({ searchTerm }) {
         </tr>
       ),
       filter: (row, term) =>
-        [row.name, row.id, row.className, row.email].some((value) =>
-          value.toLowerCase().includes(term),
+        [row.name, row.displayId, row.className, row.email].some((value) =>
+          String(value).toLowerCase().includes(term),
         ),
     },
-    teachers: {
-      label: "Teacher",
-      rows: teachers,
-      columns: ["Name", "Subject", "Room", "Status"],
+    courses: {
+      label: "Course",
+      rows: courses,
+      columns: ["Name", "Lead Code", "Position", "Status"],
       render: (row, index) => (
-        <tr key={row.name}>
+        <tr key={row.id}>
           <td>
             <div className="admin-student-cell">
               <span className={`avatar-tone-${(index % 3) + 1}`}>
                 {row.name
                   .split(" ")
                   .map((part) => part[0])
-                  .join("")}
+                  .join("")
+                  .slice(0, 2)}
               </span>
               <p>{row.name}</p>
             </div>
           </td>
-          <td>{row.subject}</td>
-          <td>{row.room}</td>
+          <td>{row.staffCode}</td>
+          <td>{row.position}</td>
           <td>{row.status}</td>
         </tr>
       ),
       filter: (row, term) =>
-        [row.name, row.subject, row.room, row.status].some((value) =>
-          value.toLowerCase().includes(term),
+        [row.name, row.staffCode, row.position, row.status].some((value) =>
+          String(value).toLowerCase().includes(term),
         ),
     },
     staff: {
@@ -90,7 +129,7 @@ function DashboardTable({ searchTerm }) {
       rows: staffMembers,
       columns: ["Name", "Role", "Shift", "Status"],
       render: (row, index) => (
-        <tr key={row.name}>
+        <tr key={row.id}>
           <td>
             <div className="admin-student-cell">
               <span className={`avatar-tone-${(index % 3) + 1}`}>
@@ -109,7 +148,7 @@ function DashboardTable({ searchTerm }) {
       ),
       filter: (row, term) =>
         [row.name, row.role, row.shift, row.status].some((value) =>
-          value.toLowerCase().includes(term),
+          String(value).toLowerCase().includes(term),
         ),
     },
   };
@@ -148,7 +187,11 @@ function DashboardTable({ searchTerm }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, index) => activeTab.render(row, index))}
+            {rows.length ? rows.map((row, index) => activeTab.render(row, index)) : (
+              <tr>
+                <td colSpan={activeTab.columns.length}>No records found.</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -157,46 +200,165 @@ function DashboardTable({ searchTerm }) {
 }
 
 export default function AdminDashboard() {
-  const { currentTime, searchTerm, pageTitle, iconMap: Icon } = useOutletContext();
-  const [liveTick, setLiveTick] = useState(0);
+  const { currentTime, searchTerm, iconMap: Icon } = useOutletContext();
+  const { students, staffMembers, loading, usingFallbackData, error } = useAdminDirectoryData();
+  const [courses, setCourses] = useState([]);
+  const [courseError, setCourseError] = useState("");
+  const [courseLoading, setCourseLoading] = useState(true);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setLiveTick((value) => value + 1);
-    }, 5000);
+    let isCancelled = false;
 
-    return () => window.clearInterval(timer);
+    async function loadCourses() {
+      try {
+        setCourseLoading(true);
+        setCourseError("");
+        const data = await fetchCourses();
+
+        if (!isCancelled) {
+          setCourses(data);
+        }
+      } catch (requestError) {
+        if (!isCancelled) {
+          setCourseError(requestError instanceof Error ? requestError.message : "Unable to load courses");
+          setCourses([]);
+        }
+      } finally {
+        if (!isCancelled) {
+          setCourseLoading(false);
+        }
+      }
+    }
+
+    loadCourses();
+
+    const timer = window.setInterval(loadCourses, 30000);
+    return () => {
+      isCancelled = true;
+      window.clearInterval(timer);
+    };
   }, []);
 
+  const studentAttendancePercent = useMemo(() => {
+    if (!students.length) return 0;
+    return Math.round(
+      students.reduce((total, student) => total + Number(student.attendance || 0), 0) / students.length,
+    );
+  }, [students]);
+
+  const studentPresentCount = useMemo(() => {
+    if (!students.length) return 0;
+    return students.filter((student) => Number(student.attendance || 0) >= 90).length;
+  }, [students]);
+
+  const studentAbsentCount = students.length - studentPresentCount;
+
+  const staffPresentCount = useMemo(
+    () => staffMembers.filter((member) => ["On Duty", "On Call"].includes(member.status)).length,
+    [staffMembers],
+  );
+
+  const staffAbsentCount = staffMembers.length - staffPresentCount;
+
+  const staffAttendancePercent = useMemo(() => {
+    if (!staffMembers.length) return 0;
+    return Math.round((staffPresentCount / staffMembers.length) * 100);
+  }, [staffMembers, staffPresentCount]);
+
+  const attendanceSeries = useMemo(() => buildAttendanceSeries(students), [students]);
+  const linePath = useMemo(() => buildLinePath(attendanceSeries), [attendanceSeries]);
+
+  const activeCourses = useMemo(
+    () => courses.filter((course) => course.status === "Assigned").length,
+    [courses],
+  );
+
+  const positionCount = useMemo(
+    () => new Set(staffMembers.map((member) => member.roleSlug)).size,
+    [staffMembers],
+  );
+
   const liveStats = useMemo(
-    () =>
-      quickStatsBase.map((item, index) => ({
-        ...item,
-        value: item.value + ((liveTick + index) % 4),
-      })),
-    [liveTick],
+    () => [
+      {
+        label: "Students",
+        value: students.length,
+        tone: "green",
+        icon: "student",
+        delta: `${studentAttendancePercent}% avg attendance`,
+      },
+      {
+        label: "Courses",
+        value: courses.length,
+        tone: "yellow",
+        icon: "teacher",
+        delta: `${activeCourses} assigned this cycle`,
+      },
+      {
+        label: "Staff",
+        value: staffMembers.length,
+        tone: "blue",
+        icon: "staff",
+        delta: `${positionCount} active positions`,
+      },
+    ],
+    [students.length, studentAttendancePercent, courses.length, activeCourses, staffMembers.length, positionCount],
   );
 
-  const liveAttendance = useMemo(
-    () => attendanceTrend.map((point, index) => point + ((liveTick + index) % 3) - 1),
-    [liveTick],
+  const productivityData = useMemo(() => {
+    const courseBase = courses.length || 1;
+    const studentBase = students.length || 1;
+    const staffBase = staffMembers.length || 1;
+
+    return productivity.map((item, index) => ({
+      ...item,
+      value: item.value + (index === 0 ? courseBase : index === 1 ? staffBase : studentBase % 10),
+    }));
+  }, [courses.length, staffMembers.length, students.length]);
+
+  const recentActivity = useMemo(
+    () => buildRecentActivity({ students, staffMembers, courses }),
+    [students, staffMembers, courses],
   );
 
-  const linePath = useMemo(() => buildLinePath(liveAttendance), [liveAttendance]);
   const nowLabel = currentTime.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
   });
-  const onlineUsers = 128 + (liveTick % 9);
+
+  const dashboardStatus = loading || courseLoading
+    ? "Loading..."
+    : usingFallbackData || courseError
+      ? "Partial live data"
+      : "Live data";
 
   return (
     <section className="admin-overview">
       <div className="admin-overview-head">
         <div>
-          
           <p>Live campus snapshot updated automatically at {nowLabel}.</p>
+          {usingFallbackData || courseError ? (
+            <small className="admin-muted-copy">
+              {usingFallbackData ? `Directory API: ${error}` : `Courses API: ${courseError}`}
+            </small>
+          ) : null}
         </div>
-       
+        <div className="admin-overview-metrics">
+          <article className="admin-overview-metric-card">
+            <span>Student Attendance</span>
+            <strong>{studentAttendancePercent}%</strong>
+            <small>
+              Present {studentPresentCount} • Absent {studentAbsentCount}
+            </small>
+          </article>
+          <article className="admin-overview-metric-card">
+            <span>Staff Attendance</span>
+            <strong>{staffAttendancePercent}%</strong>
+            <small>
+              Present {staffPresentCount} • Absent {staffAbsentCount}
+            </small>
+          </article>
+        </div>
       </div>
 
       <div className="admin-stats">
@@ -219,9 +381,9 @@ export default function AdminDashboard() {
           <div className="admin-panel-head">
             <div>
               <h3>Attendance Overview</h3>
-              <p className="admin-muted-copy">Tracking classroom participation in real time.</p>
+              <p className="admin-muted-copy">Tracking classroom participation from live student records.</p>
             </div>
-            <div className="admin-status-pill is-soft">Today {liveAttendance.at(-1)}%</div>
+            <div className="admin-status-pill is-soft">Today {attendanceSeries.at(-1)}%</div>
           </div>
 
           <div className="admin-attendance-chart">
@@ -253,11 +415,11 @@ export default function AdminDashboard() {
               </svg>
 
               <div className="admin-chart-dots">
-                {liveAttendance.map((value, index) => (
+                {attendanceSeries.map((value, index) => (
                   <span
                     key={`${index}-${value}`}
                     style={{
-                      left: `${(index / (liveAttendance.length - 1)) * 96 + 2}%`,
+                      left: `${(index / Math.max(attendanceSeries.length - 1, 1)) * 96 + 2}%`,
                       bottom: `${(value / 100) * 80 + 10}%`,
                     }}
                   />
@@ -266,7 +428,7 @@ export default function AdminDashboard() {
 
               <div className="admin-tooltip" style={{ left: "62%", bottom: "56%" }}>
                 <small>{nowLabel}</small>
-                <strong>{liveAttendance[11]}%</strong>
+                <strong>{attendanceSeries[Math.min(11, attendanceSeries.length - 1)]}%</strong>
               </div>
             </div>
           </div>
@@ -284,62 +446,64 @@ export default function AdminDashboard() {
           <div className="admin-panel-head">
             <div>
               <h3>Productivity</h3>
-              <p className="admin-muted-copy">Task completion by month.</p>
+              <p className="admin-muted-copy">Derived from live course, staff, and student totals.</p>
             </div>
-            <span className="admin-status-pill is-soft">Syncing</span>
+            <span className="admin-status-pill is-soft">{dashboardStatus}</span>
           </div>
 
           <div className="admin-productivity-chart">
             <div className="admin-productivity-bars">
-              {productivity.map((item) => {
-                const currentValue = item.value + (liveTick % 3);
-                return (
-                  <div key={item.month} className="admin-productivity-bar-group">
-                    <div
-                      className={[
-                        "admin-productivity-bar",
-                        item.tone === "strong" ? "is-strong" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      style={{ height: `${currentValue * 4}px` }}
-                    >
-                      {item.tone === "strong" ? (
-                        <div className="admin-productivity-tooltip">
-                          <small>Tasks Done</small>
-                          <strong>{currentValue}</strong>
-                        </div>
-                      ) : null}
-                    </div>
-                    <span>{item.month}</span>
+              {productivityData.map((item) => (
+                <div key={item.month} className="admin-productivity-bar-group">
+                  <div
+                    className={[
+                      "admin-productivity-bar",
+                      item.tone === "strong" ? "is-strong" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    style={{ height: `${item.value * 4}px` }}
+                  >
+                    {item.tone === "strong" ? (
+                      <div className="admin-productivity-tooltip">
+                        <small>Live Load</small>
+                        <strong>{item.value}</strong>
+                      </div>
+                    ) : null}
                   </div>
-                );
-              })}
+                  <span>{item.month}</span>
+                </div>
+              ))}
             </div>
           </div>
         </article>
       </div>
 
       <div className="admin-dual-grid">
-        <DashboardTable searchTerm={searchTerm} />
+        <DashboardTable
+          searchTerm={searchTerm}
+          students={students}
+          staffMembers={staffMembers}
+          courses={courses}
+        />
 
         <article className="admin-panel admin-activity-panel">
           <div className="admin-panel-head">
             <div>
               <h3>Recent Activity</h3>
-              <p className="admin-muted-copy">Search-aware operational updates.</p>
+              <p className="admin-muted-copy">Live operational updates built from synced records.</p>
             </div>
           </div>
 
           <div className="admin-activity-list">
-            {announcements
+            {recentActivity
               .filter((item) => {
                 const term = searchTerm.trim().toLowerCase();
                 if (!term) return true;
                 return `${item.title} ${item.detail}`.toLowerCase().includes(term);
               })
               .map((item) => (
-                <article key={item.title} className="admin-activity-item">
+                <article key={item.id} className="admin-activity-item">
                   <strong>{item.title}</strong>
                   <p>{item.detail}</p>
                 </article>

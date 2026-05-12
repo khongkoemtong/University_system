@@ -1,7 +1,9 @@
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./admin-dashboard.css";
-import { adminNavItems, scheduleItems } from "./adminData";
+import { clearAuthSession, getAuthSession } from "../auth/authSession";
+import { fetchAccessRequests, reviewAccessRequest } from "../auth/authApi";
+import { adminNavItems, announcements, staffReports } from "./adminData";
 
 function Icon({ type }) {
   const icons = {
@@ -51,10 +53,30 @@ function Icon({ type }) {
         <span className="ui-line ui-line-board" />
       </>
     ),
+    classroom: (
+      <>
+        <span className="ui-board" />
+        <span className="ui-line ui-line-board" />
+        <span className="ui-class-dot" />
+      </>
+    ),
+    course: (
+      <>
+        <span className="ui-book-cover" />
+        <span className="ui-book-line ui-book-line-top" />
+        <span className="ui-book-line ui-book-line-bottom" />
+      </>
+    ),
     staff: (
       <>
         <span className="ui-card-line" />
         <span className="ui-card-line ui-card-line-short" />
+      </>
+    ),
+    bell: (
+      <>
+        <span className="ui-bell-body" />
+        <span className="ui-bell-clapper" />
       </>
     ),
   };
@@ -62,80 +84,24 @@ function Icon({ type }) {
   return <span className={`admin-ui-icon admin-ui-icon-${type}`}>{icons[type]}</span>;
 }
 
-function buildCalendar(date) {
-  const year = date.getFullYear();
-  const month = date.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const startOffset = firstDay.getDay();
-  const totalDays = new Date(year, month + 1, 0).getDate();
-  const prevMonthDays = new Date(year, month, 0).getDate();
-  const cells = [];
-
-  for (let i = startOffset - 1; i >= 0; i -= 1) {
-    cells.push({ day: prevMonthDays - i, muted: true, current: false });
-  }
-
-  for (let day = 1; day <= totalDays; day += 1) {
-    cells.push({ day, muted: false, current: true });
-  }
-
-  while (cells.length < 35) {
-    cells.push({ day: cells.length - totalDays - startOffset + 1, muted: true, current: false });
-  }
-
-  return cells;
-}
-
-function MiniCalendar({ currentTime }) {
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const activeDay = currentTime.getDate();
-  const monthLabel = currentTime.toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
-  const cells = useMemo(() => buildCalendar(currentTime), [currentTime]);
-
-  return (
-    <div className="admin-calendar">
-      <div className="admin-calendar-head">
-        <h3>{monthLabel}</h3>
-        <div className="admin-calendar-live">
-          <span className="admin-live-dot" />
-          Live
-        </div>
-      </div>
-      <div className="admin-calendar-grid admin-calendar-grid-days">
-        {days.map((day) => (
-          <span key={day}>{day}</span>
-        ))}
-      </div>
-      <div className="admin-calendar-grid admin-calendar-grid-dates">
-        {cells.map((cell, index) => (
-          <span
-            key={`${cell.day}-${index}`}
-            className={[
-              cell.muted ? "is-muted" : "",
-              cell.current && cell.day === activeDay ? "is-selected" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            {cell.day}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default function AdminLayout() {
+  const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [searchTerm, setSearchTerm] = useState("");
-  const [sidebarVisible, setSidebarVisible] = useState(true);
-  const [sidebarSide, setSidebarSide] = useState("left");
-  const [sidebarWidth, setSidebarWidth] = useState(172);
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === "undefined") {
+      return "light";
+    }
+
+    return window.localStorage.getItem("admin-theme") || "light";
+  });
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [accessRequests, setAccessRequests] = useState([]);
+  const [reviewingRequestId, setReviewingRequestId] = useState(0);
   const location = useLocation();
-  const frameRef = useRef(null);
+  const notificationRef = useRef(null);
+  const session = getAuthSession();
+  const authUser = session?.user || null;
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -145,18 +111,73 @@ export default function AdminLayout() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadAccessRequests() {
+      try {
+        const requests = await fetchAccessRequests();
+        if (!isCancelled) {
+          setAccessRequests(Array.isArray(requests) ? requests : []);
+        }
+      } catch {
+        if (!isCancelled) {
+          setAccessRequests([]);
+        }
+      }
+    }
+
+    loadAccessRequests();
+    const timer = window.setInterval(loadAccessRequests, 15000);
+
+    return () => {
+      isCancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("admin-theme", theme);
+    document.documentElement.style.colorScheme = theme;
+  }, [theme]);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (!notificationRef.current?.contains(event.target)) {
+        setNotificationOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setNotificationOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
   const pageTitle = useMemo(() => {
-    const match = adminNavItems.find((item) => item.to === location.pathname);
-    if (match) return match.label;
+    if (location.pathname.startsWith("/admin/dashboard")) return "Dashboard";
+    if (location.pathname.startsWith("/admin/students/")) return "Students";
+    if (location.pathname.startsWith("/admin/students")) return "Students";
     if (location.pathname.startsWith("/admin/staff/")) return "Staff";
+    if (location.pathname.startsWith("/admin/staff")) return "Staff";
+    if (location.pathname.startsWith("/admin/classes")) return "Classes";
+    if (location.pathname.startsWith("/admin/courses")) return "Courses";
     if (location.pathname.startsWith("/admin/report/")) return "Report";
+    if (location.pathname.startsWith("/admin/report")) return "Report";
+    if (location.pathname.startsWith("/admin/database")) return "Database";
+    if (location.pathname.startsWith("/admin/attendance")) return "Attendance";
+    if (location.pathname.startsWith("/admin/settings")) return "Settings";
     return "Dashboard";
   }, [location.pathname]);
-
-  const isFullWidthPage = useMemo(
-    () => location.pathname.startsWith("/admin/staff") || location.pathname.startsWith("/admin/report"),
-    [location.pathname],
-  );
 
   const headerDate = currentTime.toLocaleDateString("en-US", {
     weekday: "long",
@@ -171,75 +192,71 @@ export default function AdminLayout() {
     second: "2-digit",
   });
 
-  const handleSidebarDragStart = (event) => {
-    const frame = frameRef.current;
-    if (!frame) {
-      return;
-    }
-
-    event.preventDefault();
-
-    const onPointerMove = (moveEvent) => {
-      const rect = frame.getBoundingClientRect();
-      const pointerX = moveEvent.clientX - rect.left;
-      const frameWidth = rect.width;
-      const minWidth = 136;
-      const maxWidth = Math.min(320, Math.max(220, frameWidth * 0.38));
-
-      if (pointerX < 56) {
-        setSidebarVisible(false);
-        return;
-      }
-
-      if (pointerX > frameWidth - 56) {
-        setSidebarVisible(true);
-        setSidebarSide("right");
-        setSidebarWidth(minWidth);
-        return;
-      }
-
-      if (pointerX < frameWidth * 0.42) {
-        setSidebarVisible(true);
-        setSidebarSide("left");
-        setSidebarWidth(Math.min(maxWidth, Math.max(minWidth, pointerX)));
-        return;
-      }
-
-      if (pointerX > frameWidth * 0.58) {
-        setSidebarVisible(true);
-        setSidebarSide("right");
-        setSidebarWidth(
-          Math.min(maxWidth, Math.max(minWidth, frameWidth - pointerX)),
-        );
-      }
-    };
-
-    const onPointerUp = () => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-    };
-
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-  };
-
-  return (
-    <main className="admin-dashboard-shell">
-      <section
-        ref={frameRef}
-        className={[
-          "admin-dashboard-frame",
-          sidebarVisible ? "" : "is-sidebar-hidden",
-          sidebarSide === "right" ? "is-sidebar-right" : "",
+  const notifications = useMemo(
+    () => [
+      ...accessRequests.map((item) => ({
+        id: `request-${item.id}`,
+        requestId: item.id,
+        title: `${item.account_type === "admin" ? "Admin" : "Staff"} Access Request`,
+        detail: [
+          item.name,
+          item.email,
+          item.position || item.account_type,
+          item.staff_code || null,
         ]
           .filter(Boolean)
-          .join(" ")}
-        style={
-          sidebarVisible
-            ? { "--admin-sidebar-width": `${sidebarWidth}px` }
-            : undefined
-        }
-      >
+          .join(" • "),
+        tone: "approval",
+        time: item.created_at ? new Date(item.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Just now",
+        role: item.account_type === "admin" ? "Admin" : "Staff",
+        status: item.status,
+      })),
+      ...announcements.map((item, index) => ({
+        id: `announcement-${index}`,
+        title: item.title,
+        detail: item.detail,
+        tone: "system",
+        time: "Just now",
+      })),
+      ...staffReports.slice(0, 3).map((item) => ({
+        id: item.id,
+        title: item.title,
+        detail: `${item.staffName} • ${item.status}`,
+        tone: "report",
+        time: item.time,
+      })),
+    ],
+    [accessRequests],
+  );
+
+  function handleLogout() {
+    clearAuthSession();
+    navigate("/sign-in", { replace: true });
+  }
+
+  async function handleReviewRequest(requestId, action) {
+    setReviewingRequestId(requestId);
+
+    try {
+      await reviewAccessRequest({
+        id: requestId,
+        action,
+      });
+
+      const requests = await fetchAccessRequests();
+      setAccessRequests(Array.isArray(requests) ? requests : []);
+    } finally {
+      setReviewingRequestId(0);
+    }
+  }
+
+  if (!authUser || String(authUser.role_name || "").toLowerCase() !== "admin") {
+    return <Navigate to="/sign-in" replace />;
+  }
+
+  return (
+    <main className={`admin-dashboard-shell theme-${theme}`}>
+      <section className="admin-dashboard-frame">
         <aside className="admin-sidebar">
           <div className="admin-brand">
             <div className="admin-brand-mark">
@@ -264,6 +281,24 @@ export default function AdminLayout() {
               </NavLink>
             ))}
           </nav>
+
+          <section className="admin-session-card">
+            <div className="admin-session-avatar">
+              {String(authUser.name || "AD")
+                .split(" ")
+                .map((part) => part[0])
+                .join("")
+                .slice(0, 2)}
+            </div>
+            <div className="admin-session-meta">
+              <strong>{authUser.name}</strong>
+              <span>{authUser.email}</span>
+              <small>{authUser.role_name} account</small>
+            </div>
+            <button type="button" className="admin-session-logout" onClick={handleLogout}>
+              Logout
+            </button>
+          </section>
         </aside>
 
         <section className="admin-main">
@@ -286,65 +321,109 @@ export default function AdminLayout() {
             </div>
 
             <div className="admin-topbar-actions">
-              <button type="button" className="admin-notify" aria-label="Notifications">
-                <span>◌</span>
-              </button>
+              <div ref={notificationRef} className={`admin-notification-wrap${notificationOpen ? " is-open" : ""}`}>
+                <button
+                  type="button"
+                  className="admin-notify"
+                  aria-label="Notifications"
+                  aria-expanded={notificationOpen}
+                  onClick={() => setNotificationOpen((value) => !value)}
+                >
+                  <span className="admin-bell-icon" aria-hidden="true">
+                    <Icon type="bell" />
+                  </span>
+                  <em>{notifications.length}</em>
+                </button>
+
+                <div className="admin-notification-modal" role="dialog" aria-label="Notifications panel">
+                  <div className="admin-notification-modal-head">
+                    <div>
+                      <strong>Approval & Notifications</strong>
+                      <p>{notifications.length} updates waiting for review</p>
+                    </div>
+                    <span className="admin-status-pill">{notifications.length} new</span>
+                  </div>
+
+                  <div className="admin-notification-highlight">
+                    <strong>Pending Access Approval</strong>
+                    <p>Review people who want to become staff or admin from this inbox.</p>
+                  </div>
+
+                  <div className="admin-notification-list">
+                    {notifications.map((item) => (
+                      <article key={item.id} className={`admin-notification-item tone-${item.tone}`}>
+                        <div className="admin-notification-dot" aria-hidden="true" />
+                        <div>
+                          <strong>{item.title}</strong>
+                          <p>{item.detail}</p>
+                          <small>{item.time}</small>
+                          {item.tone === "approval" ? (
+                            <div className="admin-notification-actions">
+                              <span className="admin-notification-role">
+                                {item.status === "pending" ? `${item.role} Request` : `${item.role} ${item.status}`}
+                              </span>
+                              <div className="admin-notification-action-group">
+                                {item.status === "pending" ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      className="admin-notification-btn is-approve"
+                                      disabled={reviewingRequestId === item.requestId}
+                                      onClick={() => handleReviewRequest(item.requestId, "approve")}
+                                    >
+                                      {reviewingRequestId === item.requestId ? "Saving..." : "Approve"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="admin-notification-btn is-decline"
+                                      disabled={reviewingRequestId === item.requestId}
+                                      onClick={() => handleReviewRequest(item.requestId, "decline")}
+                                    >
+                                      Decline
+                                    </button>
+                                  </>
+                                ) : null}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              </div>
               <div className="admin-profile">
-                <div className="admin-avatar">MB</div>
+                <div className="admin-avatar">
+                  {String(authUser.name || "AD")
+                    .split(" ")
+                    .map((part) => part[0])
+                    .join("")
+                    .slice(0, 2)}
+                </div>
                 <div className="admin-profile-meta">
-                  <span>Muh. Bambang</span>
-                  <small>{pageTitle} Control</small>
+                  <span>{authUser.name}</span>
+                  <small>{pageTitle} Control • {authUser.email}</small>
                 </div>
               </div>
             </div>
           </header>
 
-          <div className={`admin-content${isFullWidthPage ? " is-full-width" : ""}`}>
+          <div className="admin-content">
             <div className="admin-center">
-              <Outlet context={{ currentTime, searchTerm, pageTitle, iconMap: Icon }} />
+              <Outlet
+                context={{
+                  currentTime,
+                  searchTerm,
+                  pageTitle,
+                  iconMap: Icon,
+                  theme,
+                  setTheme,
+                  authUser,
+                }}
+              />
             </div>
-
-            {!isFullWidthPage && (
-              <aside className="admin-rightbar">
-                <MiniCalendar currentTime={currentTime} />
-
-                <section className="admin-schedule">
-                  <h3>Today Queue</h3>
-                  <div className="admin-schedule-list">
-                    {scheduleItems.map((item) => (
-                      <article key={item.title} className="admin-schedule-card">
-                        <div className={`admin-schedule-icon tone-${item.tone}`}>{item.icon}</div>
-                        <div>
-                          <strong>{item.title}</strong>
-                          <p>
-                            {item.date} at {item.time}
-                          </p>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-              </aside>
-            )}
           </div>
         </section>
-
-        <button
-          type="button"
-          className={[
-            "admin-sidebar-rail",
-            sidebarSide === "right" ? "is-right" : "",
-            sidebarVisible ? "" : "is-hidden",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          onPointerDown={handleSidebarDragStart}
-          onDoubleClick={() => setSidebarVisible((value) => !value)}
-          aria-label="Drag to resize, move, or hide sidebar"
-          title="Drag to resize sidebar. Pull to left edge to hide, or to right edge to dock right."
-        >
-          <span />
-        </button>
       </section>
     </main>
   );

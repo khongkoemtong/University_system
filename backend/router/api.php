@@ -68,6 +68,37 @@ dispatchCrudResource($uri, $method, "roles");
 dispatchCrudResource($uri, $method, "permissions");
 dispatchCrudResource($uri, $method, "staff");
 dispatchCrudResource($uri, $method, "courses");
+dispatchCrudResource($uri, $method, "classes");
+
+if ($uri === "/api/attendance/class" && $method === "GET") {
+    require_once __DIR__ . "/../app/controllers/attendance/class_read.php";
+    exit;
+}
+
+if ($uri === "/api/attendance/class" && $method === "POST") {
+    require_once __DIR__ . "/../app/controllers/attendance/class_save.php";
+    exit;
+}
+
+if ($uri === "/api/auth/login" && $method === "POST") {
+    require_once __DIR__ . "/../app/controllers/auth/login.php";
+    exit;
+}
+
+if ($uri === "/api/auth/register" && $method === "POST") {
+    require_once __DIR__ . "/../app/controllers/auth/register.php";
+    exit;
+}
+
+if ($uri === "/api/auth/requests" && $method === "GET") {
+    require_once __DIR__ . "/../app/controllers/auth/requests.php";
+    exit;
+}
+
+if ($uri === "/api/auth/review" && $method === "PUT") {
+    require_once __DIR__ . "/../app/controllers/auth/review.php";
+    exit;
+}
 
 if ($uri === "/api/role_permissions" && $method === "GET") {
     if (isset($_GET["role_id"]) && $_GET["role_id"] !== "") {

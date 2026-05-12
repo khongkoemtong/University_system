@@ -32,6 +32,10 @@ class StudentService
             throw new InvalidArgumentException("Email already exists");
         }
 
+        if ($this->studentModel->phoneExists($payload["phone"])) {
+            throw new InvalidArgumentException("Phone number already exists");
+        }
+
         if ($this->usesAccountSchema && $this->studentModel->studentCodeExists($payload["student_code"])) {
             throw new InvalidArgumentException("Student code already exists");
         }
@@ -74,6 +78,10 @@ class StudentService
             throw new InvalidArgumentException("Email already exists");
         }
 
+        if ($this->studentModel->phoneExists($payload["phone"], (int) $id)) {
+            throw new InvalidArgumentException("Phone number already exists");
+        }
+
         return $this->studentModel->update($id, $payload);
     }
 
@@ -108,6 +116,10 @@ class StudentService
         if ($this->usesAccountSchema) {
             if (!required($studentCode)) {
                 throw new InvalidArgumentException("Student code is required");
+            }
+
+            if (!validatePhone($phone)) {
+                throw new InvalidArgumentException("Phone must be 8 to 15 digits");
             }
 
             if (!$isUpdate && strlen($password) < 6) {

@@ -55,6 +55,26 @@ class Staff
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
+    public function findByUserId($userId)
+    {
+        $stmt = $this->conn->prepare("
+            SELECT
+                staff.id,
+                staff.user_id,
+                staff.staff_code,
+                staff.position,
+                users.name,
+                users.email
+            FROM staff
+            LEFT JOIN users ON staff.user_id = users.id
+            WHERE staff.user_id = :user_id
+            LIMIT 1
+        ");
+        $stmt->execute([":user_id" => $userId]);
+
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
     public function userExists($userId)
     {
         $stmt = $this->conn->prepare("SELECT id FROM users WHERE id = :id");

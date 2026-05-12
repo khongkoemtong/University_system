@@ -1,9 +1,8 @@
 import { useMemo } from "react";
 import { useOutletContext } from "react-router-dom";
-import { baseStudents, classCatalog } from "./staffData";
 
 export default function StaffDashboard() {
-  const { currentTime, filteredStudents } = useOutletContext();
+  const { currentTime, filteredStudents, classes, dataLoading, dataError } = useOutletContext();
 
   const maleCount = filteredStudents.filter((student) => student.gender === "Male").length;
   const femaleCount = filteredStudents.filter((student) => student.gender === "Female").length;
@@ -20,12 +19,12 @@ export default function StaffDashboard() {
     const absent = filteredStudents.filter((student) => student.status === "Absent").length;
     const late = filteredStudents.filter((student) => student.status === "Late").length;
     return [
-      { label: "Total Classes", value: classCatalog.length },
+      { label: "Total Classes", value: classes.length },
       { label: "Total Students", value: total },
       { label: "Absent Today", value: absent || 0 },
       { label: "Late Students", value: late || 0 },
     ];
-  }, [filteredStudents]);
+  }, [classes.length, filteredStudents]);
 
   const attendanceSummary = useMemo(() => {
     const total = Math.max(filteredStudents.length, 1);
@@ -56,12 +55,12 @@ export default function StaffDashboard() {
   }, [filteredStudents]);
 
   const classSummary = useMemo(() => {
-    return classCatalog.map((classItem) => ({
+    return classes.map((classItem) => ({
       name: classItem.name,
-      room: classItem.room,
-      value: baseStudents.filter((student) => student.className === classItem.name).length,
+      room: classItem.classCode,
+      value: filteredStudents.filter((student) => student.className === classItem.name).length,
     }));
-  }, []);
+  }, [classes, filteredStudents]);
 
   return (
     <section className="staff-page">
@@ -72,9 +71,20 @@ export default function StaffDashboard() {
         </div>
         <div className="staff-status-pill">
           <span className="staff-live-dot" />
-          Live attendance overview
+          {dataLoading ? "Loading classes" : dataError ? "Sync issue" : "Live attendance overview"}
         </div>
       </div>
+
+      {dataError ? (
+        <section className="staff-content-panel">
+          <div className="staff-content-panel-head">
+            <div>
+              <h3>Data Sync Problem</h3>
+              <p>{dataError}</p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="staff-stat-grid">
         {stats.map((stat, index) => (
